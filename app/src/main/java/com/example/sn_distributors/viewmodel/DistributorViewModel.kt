@@ -10,7 +10,7 @@ import com.example.sn_distributors.data.model.Requisition
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-
+import java.util.UUID
 class DistributorViewModel : ViewModel() {
 
     private val _currentTab = MutableStateFlow(PortalTab.PRODUCTS)
@@ -81,6 +81,7 @@ class DistributorViewModel : ViewModel() {
                 ),
             )
         }
+        _isLoading.value = false
     }
 
     fun selectTab(tab: PortalTab) {
@@ -97,7 +98,11 @@ class DistributorViewModel : ViewModel() {
         val index = currentCart.indexOfFirst { it.product.id == product.id }
         if (index >= 0) {
             val existing = currentCart[index]
-            currentCart[index] = existing.copy(quantity = existing.quantity + quantity)
+            currentCart[index] = existing.copy(
+                quantity = (existing.quantity.toLong() + quantity.toLong())
+                    .coerceAtMost(Int.MAX_VALUE.toLong())
+                    .toInt()
+            )
         } else {
             currentCart.add(CartItem(product = product, quantity = quantity))
         }
@@ -106,7 +111,7 @@ class DistributorViewModel : ViewModel() {
 
     fun requisitionSingleProduct(product: ProductItem, quantity: Int) {
         if (quantity <= 0) return
-        val reqId = "DR-000" + (_requisitions.value.size + 8)
+        val reqId = "DR-" + UUID.randomUUID().toString()
         val newReq = Requisition(
             id = reqId,
             distributorId = _distributor.value?.id ?: "DST-0001",
@@ -131,7 +136,8 @@ class DistributorViewModel : ViewModel() {
                 ApprovalStatus.PENDING_ACCOUNTS -> ApprovalStatus.APPROVED_ACCOUNTS
                 ApprovalStatus.APPROVED_ACCOUNTS -> ApprovalStatus.FACTORY_ACCEPTED
                 ApprovalStatus.FACTORY_ACCEPTED -> ApprovalStatus.READY_FOR_DELIVERY
-                ApprovalStatus.READY_FOR_DELIVERY -> ApprovalStatus.READY_FOR_DELIVERY
+                ApprovalStatus.READY_FOR_DELIVERY -> ApprovalStatus.DELIVERED
+                else -> req.status
             }
             currentList[index] = req.copy(status = nextStatus, updatedAt = "Updated just now")
             _requisitions.value = currentList

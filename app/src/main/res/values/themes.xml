@@ -3,9 +3,4 @@
 
     <style name="Theme.SN_Distributors" parent="android:Theme.Material.Light.NoActionBar" />
 
-    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">#1B4D3E</item>
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
-        <item name="postSplashScreenTheme">@style/Theme.SN_Distributors</item>
-    </style>
 </resources>
