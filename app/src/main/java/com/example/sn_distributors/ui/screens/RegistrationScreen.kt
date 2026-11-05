@@ -19,6 +19,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 private val RegisterGreen = Color(0xFF0A3420)
 private val RegisterBackground = Color(0xFFF4F6F5)
@@ -27,7 +29,7 @@ private val RegisterMuted = Color(0xFF667085)
 
 @Composable
 fun RegistrationScreen(
-    onRegister: (String, String, String) -> Boolean,
+    onRegister: suspend (String, String, String) -> Boolean,
     onNavigateToLogin: () -> Unit
 ) {
     var fullName by remember { mutableStateOf("") }
@@ -38,18 +40,22 @@ fun RegistrationScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmPasswordVisible by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
+    var submitting by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = RegisterBackground
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(20.dp),
-            contentAlignment = Alignment.Center
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
+            TextButton(onClick = onNavigateToLogin, modifier = Modifier.align(Alignment.Start)) { Text("Back") }
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -259,15 +265,15 @@ fun RegistrationScreen(
                                 }
 
                                 else -> {
-                                    val success = onRegister(
-                                        cleanName,
-                                        cleanEmail,
-                                        password
-                                    )
-
-                                    if (!success) {
-                                        errorMessage =
-                                            "An account with this email already exists."
+                                    submitting = true
+                                    scope.launch {
+                                        try {
+                                            if (!onRegister(cleanName, cleanEmail, password)) {
+                                                errorMessage = "An account with this email already exists."
+                                            }
+                                        } catch (e: CancellationException) { throw e }
+                                        catch (_: Exception) { errorMessage = "Could not save the account. Please try again." }
+                                        finally { submitting = false }
                                     }
                                 }
                             }
@@ -275,13 +281,14 @@ fun RegistrationScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(52.dp),
+                        enabled = !submitting,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = RegisterGreen
                         ),
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Text(
-                            "CREATE ACCOUNT",
+                            if (submitting) "Creating account…" else "CREATE ACCOUNT",
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp
                         )

@@ -20,6 +20,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.sn_distributors.data.model.UserRole
+import com.example.sn_distributors.data.model.DemoAccounts
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 private val LoginGreen = Color(0xFF0A3420)
 private val LoginBackground = Color(0xFFF4F6F5)
@@ -36,8 +39,9 @@ private fun UserRole.displayName(): String {
 
 @Composable
 fun LoginScreen(
-    onLogin: (String, String, UserRole) -> Boolean,
-    onNavigateToRegister: () -> Unit
+    onLogin: suspend (String, String, UserRole) -> Boolean,
+    onNavigateToRegister: () -> Unit,
+    onBack: () -> Unit = {}
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -58,18 +62,23 @@ fun LoginScreen(
     var errorMessage by remember {
         mutableStateOf("")
     }
+    var submitting by remember { mutableStateOf(false) }
+    var demoExpanded by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = LoginBackground
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(20.dp),
-            contentAlignment = Alignment.Center
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
+            TextButton(onClick = onBack, modifier = Modifier.align(Alignment.Start)) { Text("Back") }
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -125,6 +134,22 @@ fun LoginScreen(
                     Spacer(Modifier.height(26.dp))
 
                     // Role selection
+                    Box {
+                        OutlinedButton(onClick = { demoExpanded = true }, enabled = !submitting,
+                            modifier = Modifier.fillMaxWidth()) { Text("Use a demo account") }
+                        DropdownMenu(expanded = demoExpanded, onDismissRequest = { demoExpanded = false }) {
+                            DemoAccounts.logins.forEach { demo ->
+                                DropdownMenuItem(text = { Text("${demo.account.name}\n${demo.account.email}") }, onClick = {
+                                    email = demo.account.email
+                                    password = demo.password
+                                    selectedRole = demo.account.role
+                                    errorMessage = ""
+                                    demoExpanded = false
+                                })
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
                     Text(
                         text = "Login as",
                         modifier = Modifier.fillMaxWidth(),
@@ -279,15 +304,15 @@ fun LoginScreen(
                                 }
 
                                 else -> {
-                                    val success = onLogin(
-                                        cleanEmail,
-                                        password,
-                                        selectedRole
-                                    )
-
-                                    if (!success) {
-                                        errorMessage =
-                                            "Login failed. Check your email, password, selected role, or account approval status."
+                                    submitting = true
+                                    scope.launch {
+                                        try {
+                                            if (!onLogin(cleanEmail, password, selectedRole)) {
+                                                errorMessage = "Login failed. Check your email, password, selected role, or account status."
+                                            }
+                                        } catch (e: CancellationException) { throw e }
+                                        catch (_: Exception) { errorMessage = "Could not read local accounts. Please try again." }
+                                        finally { submitting = false }
                                     }
                                 }
                             }
@@ -295,13 +320,14 @@ fun LoginScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(52.dp),
+                        enabled = !submitting,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = LoginGreen
                         ),
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         Text(
-                            text = "LOG IN",
+                            text = if (submitting) "Logging in…" else "LOG IN",
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         )

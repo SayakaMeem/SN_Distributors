@@ -62,6 +62,11 @@ dependencies {
     // Compose BOM - main app
     implementation(platform(libs.androidx.compose.bom))
 
+    // Declare the Compose APIs used directly by the app. The BOM aligns their versions.
+    implementation(libs.androidx.compose.runtime)
+    implementation(libs.androidx.compose.runtime.saveable)
+    implementation(libs.androidx.compose.foundation)
+
     // Compose UI
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)

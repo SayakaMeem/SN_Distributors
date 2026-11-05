@@ -16,6 +16,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.sn_distributors.data.model.*
+import com.example.sn_distributors.ui.components.ScrollableDialogBody
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 private val AdminGreen = Color(0xFF0A3420)
 private val AdminBackground = Color(0xFFF4F6F5)
@@ -23,19 +26,12 @@ private val AdminBackground = Color(0xFFF4F6F5)
 @Composable
 fun AdminDashboardScreen(
     accounts: List<UserAccount>,
-    onApproveDistributor: (String) -> Unit,
-    onRejectDistributor: (String) -> Unit,
-    onCreateStaff: (String, String, String, StaffDepartment) -> Boolean,
-    onCreateDistributor: (String, String, String) -> Boolean,
+    onCreateStaff: suspend (String, String, String, StaffDepartment) -> Boolean,
+    onCreateDistributor: suspend (String, String, String) -> Boolean,
     onLogout: () -> Unit
 ) {
     var showStaffDialog by remember { mutableStateOf(false) }
     var showDistributorDialog by remember { mutableStateOf(false) }
-
-    val pending = accounts.filter {
-        it.role == UserRole.DISTRIBUTOR &&
-                it.status == AccountStatus.PENDING
-    }
 
     val distributors = accounts.filter {
         it.role == UserRole.DISTRIBUTOR &&
@@ -52,8 +48,8 @@ fun AdminDashboardScreen(
     ) {
         LazyColumn(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
+                .fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
 
@@ -93,8 +89,8 @@ fun AdminDashboardScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     AdminSummaryCard(
-                        title = "Pending",
-                        count = pending.size,
+                        title = "Accounts",
+                        count = accounts.size,
                         modifier = Modifier.weight(1f)
                     )
 
@@ -113,58 +109,7 @@ fun AdminDashboardScreen(
             }
 
             item {
-                AdminSectionTitle("Pending Registrations")
-            }
-
-            if (pending.isEmpty()) {
-                item {
-                    AdminEmptyMessage(
-                        "No pending distributor registrations."
-                    )
-                }
-            } else {
-                items(pending, key = { it.id }) { account ->
-                    Card {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Text(
-                                text = account.name,
-                                fontWeight = FontWeight.Bold
-                            )
-
-                            Text(account.email)
-                            Text("ID: ${account.id}")
-                            Text("Status: Pending")
-
-                            Row(
-                                horizontalArrangement =
-                                    Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = {
-                                        onApproveDistributor(account.id)
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Approve")
-                                }
-
-                                OutlinedButton(
-                                    onClick = {
-                                        onRejectDistributor(account.id)
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    Text("Reject")
-                                }
-                            }
-                        }
-                    }
-                }
+                Text("New distributor accounts are active immediately. No account approval is required.")
             }
 
             item {
@@ -359,20 +304,22 @@ private fun AdminCreateAccountDialog(
     title: String,
     nameLabel: String,
     onDismiss: () -> Unit,
-    onCreate: (String, String, String) -> Boolean
+    onCreate: suspend (String, String, String) -> Boolean
 ) {
     var name by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
+    var submitting by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!submitting) onDismiss() },
         title = {
             Text(title)
         },
         text = {
-            Column(
+            ScrollableDialogBody(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedTextField(
@@ -438,26 +385,24 @@ private fun AdminCreateAccountDialog(
                         error =
                             "Enter all fields. Password needs 6+ characters."
                     } else {
-                        val success = onCreate(
-                            name.trim(),
-                            email.trim(),
-                            password
-                        )
-
-                        if (success) {
-                            onDismiss()
-                        } else {
-                            error =
-                                "Invalid email or account already exists."
+                        submitting = true
+                        scope.launch {
+                            try {
+                                if (onCreate(name.trim(), email.trim(), password)) onDismiss()
+                                else error = "Invalid email or account already exists."
+                            } catch (e: CancellationException) { throw e }
+                            catch (_: Exception) { error = "Could not save the account. Please try again." }
+                            finally { submitting = false }
                         }
                     }
-                }
+                },
+                enabled = !submitting
             ) {
-                Text("Create")
+                Text(if (submitting) "Saving…" else "Create")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onDismiss, enabled = !submitting) {
                 Text("Cancel")
             }
         }
@@ -467,7 +412,7 @@ private fun AdminCreateAccountDialog(
 @Composable
 private fun AdminCreateStaffDialog(
     onDismiss: () -> Unit,
-    onCreateStaff: (
+    onCreateStaff: suspend (
         String,
         String,
         String,
@@ -484,14 +429,16 @@ private fun AdminCreateStaffDialog(
 
     var expanded by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf("") }
+    var submitting by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!submitting) onDismiss() },
         title = {
             Text("Create Staff Account")
         },
         text = {
-            Column(
+            ScrollableDialogBody(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedTextField(
@@ -587,27 +534,24 @@ private fun AdminCreateStaffDialog(
                     ) {
                         error = "Enter valid account details."
                     } else {
-                        val success = onCreateStaff(
-                            name.trim(),
-                            email.trim(),
-                            password,
-                            department
-                        )
-
-                        if (success) {
-                            onDismiss()
-                        } else {
-                            error =
-                                "Email invalid or already registered."
+                        submitting = true
+                        scope.launch {
+                            try {
+                                if (onCreateStaff(name.trim(), email.trim(), password, department)) onDismiss()
+                                else error = "Email invalid or already registered."
+                            } catch (e: CancellationException) { throw e }
+                            catch (_: Exception) { error = "Could not save the account. Please try again." }
+                            finally { submitting = false }
                         }
                     }
-                }
+                },
+                enabled = !submitting
             ) {
-                Text("Create Staff")
+                Text(if (submitting) "Saving…" else "Create Staff")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onDismiss, enabled = !submitting) {
                 Text("Cancel")
             }
         }
